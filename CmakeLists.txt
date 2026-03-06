@@ -9,9 +9,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 include_directories(include)
 file(GLOB_RECURSE HOOKDLL_CPP src/HookDLL/*.cpp)
 file(GLOB_RECURSE LOADER_CPP src/Loader/*.cpp)
+file(GLOB_RECURSE COMMON_CPP src/Common.cpp)
 
 # ------------------- 定义库（DLL） -------------------
-add_library(HookDLL SHARED ${HOOKDLL_CPP})
+add_library(HookDLL SHARED ${HOOKDLL_CPP} ${COMMON_CPP})
 
 target_link_libraries(HookDLL minhook)
 if(MINGW)
@@ -30,7 +31,7 @@ elseif(MSVC)
 endif()
 
 # ------------------- 定义可执行文件（EXE） -------------------
-add_executable(Loader ${LOADER_CPP})
+add_executable(Loader ${LOADER_CPP} ${COMMON_CPP})
 
 # 链接库
 target_link_libraries(Loader minhook)
