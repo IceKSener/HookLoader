@@ -1,47 +1,199 @@
-#include <windows.h>
 #include <stdio.h>
+#include <tchar.h>
+#include <vector>
+#include <map>
+#include <string>
 
-// 注入 DLL 到目标进程（已挂起状态）
-BOOL InjectDll(HANDLE hProcess, const wchar_t* dllPath)
+#include "RegForm.hpp"
+#include "VirtualRegistry.h"
+#include "Common.hpp"
+
+using namespace std;
+
+VirtualRegistry virReg;
+
+// 用于维护每个子进程的注册表句柄
+CRITICAL_SECTION g_HandleCs;
+static wchar_t g_pipeName[128];
+BOOL g_Running = true;
+
+DWORD WINAPI ClientThread(LPVOID lpParam){
+    HANDLE hPipe = (HANDLE)lpParam;
+    DWORD pid = 0;
+    GetNamedPipeClientProcessId(hPipe, &pid);
+    
+    RegRequest req;
+    RegResponse res;
+    while (g_Running)
+    {
+        // 读取请求
+        if (!ReadFileSafe(hPipe, &req, sizeof(req))) {
+            if (GetLastError() != ERROR_BROKEN_PIPE) {
+                wprintf(L"[Loader] Client %u Read Pipe error: %d\n", pid, GetLastError());
+            }
+            break;
+        }
+        
+        wprintf(L"Op=%d HKEY_Path=%s\n",(int)req.op, virReg.GetPath(req.hKey).c_str());
+        switch (req.op)
+        {
+            case REG_OP_CREATEKEY: {
+                res.ret = virReg.CreateKey(req.hKey, req.createKey.path, res.hKey, res.createKey.disposition);
+                break;
+            }
+            case REG_OP_OPENKEY: {
+                res.ret = virReg.OpenKey(req.hKey, req.openKey.path, res.hKey);
+                break;
+            }
+            case REG_OP_QUERYVALUE: {
+                DWORD type;
+                std::vector<BYTE> data;
+                res.ret = virReg.QueryValue(req.hKey, req.queryValue.valueName, type, data);
+                if (res.ret == ERROR_SUCCESS) {
+                    res.queryValue.type = type;
+                    res.queryValue.dataLen = min((DWORD)data.size(), (DWORD)sizeof(res.queryValue.data));
+                    memcpy(res.queryValue.data, data.data(), res.queryValue.dataLen);
+                }
+                break;
+            }
+            case REG_OP_SETVALUE: {
+                std::vector<BYTE> data(req.setValue.data, req.setValue.data + req.setValue.dataLen);
+                res.ret = virReg.SetValue(req.hKey, req.setValue.valueName, req.setValue.type, data);
+                break;
+            }
+            case REG_OP_CLOSEKEY: {
+                res.ret = virReg.CloseKey(req.hKey);
+                break;
+            }
+            case REG_OP_ENUMKEY: {
+                std::wstring name;
+                res.ret = virReg.EnumKey(req.hKey, req.enumInfo.index, name);
+                if (res.ret == ERROR_SUCCESS) {
+                    wcsncpy_s(res.enumKey.name, name.c_str(), _TRUNCATE);
+                }
+                break;
+            }
+            case REG_OP_ENUMVALUE: {
+                std::wstring valueName;
+                DWORD type;
+                std::vector<BYTE> data;
+                res.ret = virReg.EnumValue(req.hKey, req.enumInfo.index, valueName, type, data);
+                if (res.ret == ERROR_SUCCESS) {
+                    auto& ResValueName = res.enumValue.valueName;
+                    wcsncpy_s(ResValueName, valueName.c_str(), _TRUNCATE);
+                    res.enumValue.type = type;
+                    res.enumValue.dataLen = min((DWORD)data.size(), (DWORD)sizeof(res.enumValue.data));
+                    memcpy(res.enumValue.data, data.data(), res.enumValue.dataLen);
+                }
+                break;
+            }
+            case REG_OP_QUERYINFOKEY: {
+                std::wstring className;
+                res.ret = virReg.QueryInfoKey(req.hKey,
+                    res.queryInfo.subKeys,
+                    res.queryInfo.maxSubKeyLen,
+                    res.queryInfo.maxClassLen,
+                    res.queryInfo.values,
+                    res.queryInfo.maxValueNameLen,
+                    res.queryInfo.maxValueLen,
+                    res.queryInfo.securityDescriptor,
+                    res.queryInfo.lastWriteTime,
+                    className);
+                if (res.ret == ERROR_SUCCESS) {
+                    wcsncpy_s(res.queryInfo.className, className.c_str(), _TRUNCATE);
+                }
+                break;
+            }
+            case REG_OP_DELETEKEY: {
+                res.ret = virReg.DeleteKey(req.hKey, req.deleteKey.path);
+                break;
+            }
+            case REG_OP_DELETEVALUE: {
+                res.ret = virReg.DeleteValue(req.hKey, req.deleteValue.valueName);
+                break;
+            }
+            default: {
+                res.ret = ERROR_INVALID_HANDLE;
+                break;
+            }
+        }
+        if(!WriteFileSafe(hPipe, &res, sizeof(RegResponse)))
+        {
+            wprintf(L"[Loader] Client %u Write Pipe error: %d\n", pid, GetLastError());
+            break;
+        }
+
+    }
+    return 0;
+}
+
+// 命名管道服务端线程
+DWORD WINAPI PipeServerThread(LPVOID lpParam)
 {
-    SIZE_T size = (wcslen(dllPath) + 1) * sizeof(wchar_t);
-    LPVOID pRemoteBuf = VirtualAllocEx(hProcess, NULL, size, MEM_COMMIT, PAGE_READWRITE);
-    if (!pRemoteBuf)
+    while(g_Running)
     {
-        wprintf(L"VirtualAllocEx failed: %d\n", GetLastError());
-        return FALSE;
-    }
+        HANDLE hPipe = CreateNamedPipeW(
+            g_pipeName,
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            PIPE_UNLIMITED_INSTANCES,
+            sizeof(RegRequest),
+            sizeof(RegResponse),
+            0,
+            NULL
+        );
+        if (hPipe == INVALID_HANDLE_VALUE) {
+            wprintf(L"[PipeServer] CreateNamedPipeW failed: %d\n", GetLastError());
+            CloseHandle(hPipe);
+            continue;
+        }
 
-    if (!WriteProcessMemory(hProcess, pRemoteBuf, dllPath, size, NULL))
-    {
-        wprintf(L"WriteProcessMemory failed: %d\n", GetLastError());
-        VirtualFreeEx(hProcess, pRemoteBuf, 0, MEM_RELEASE);
-        return FALSE;
-    }
+        if(!ConnectNamedPipe(hPipe, NULL) && GetLastError()!=ERROR_PIPE_CONNECTED)
+        {
+            wprintf(L"[PipeServer] Named pipe connect failed: %d\n", GetLastError());
+            break;
+        }
 
-    PTHREAD_START_ROUTINE pLoadLibrary = (PTHREAD_START_ROUTINE)
-        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
-    if (!pLoadLibrary)
-    {
-        wprintf(L"GetProcAddress failed: %d\n", GetLastError());
-        VirtualFreeEx(hProcess, pRemoteBuf, 0, MEM_RELEASE);
-        return FALSE;
-    }
+        DWORD clientPid = 0;
+        GetNamedPipeClientProcessId(hPipe, &clientPid);
+        wprintf(L"[PipeServer] Client connected (PID=%u)\n", clientPid);
 
-    HANDLE hRemoteThread = CreateRemoteThread(hProcess, NULL, 0, pLoadLibrary, pRemoteBuf, 0, NULL);
-    if (!hRemoteThread)
-    {
-        wprintf(L"CreateRemoteThread failed: %d\n", GetLastError());
-        VirtualFreeEx(hProcess, pRemoteBuf, 0, MEM_RELEASE);
-        return FALSE;
+        HANDLE hThread = CreateThread(NULL, 0, ClientThread, (LPVOID)hPipe, 0, NULL);
+        if (hThread) {
+            CloseHandle(hThread);    // 不等待线程，独立运行
+        } else {
+            wprintf(L"[PipeServer] CreateThread failed: %d\n", GetLastError());
+            CloseHandle(hPipe);
+        }
     }
+    return 0;
+}
 
-    WaitForSingleObject(hRemoteThread, INFINITE);
-    CloseHandle(hRemoteThread);
-    VirtualFreeEx(hProcess, pRemoteBuf, 0, MEM_RELEASE);
+// 创建命名管道服务端
+BOOL InitPipeServer() {
+    swprintf(g_pipeName, L"\\\\.\\pipe\\VirtualRegistryPipe%d",GetCurrentProcessId());
     return TRUE;
 }
 
+// 注入 DLL 到目标进程
+BOOL InjectDll(HANDLE hProcess, const wchar_t* dllPath)
+{
+    // 注入dll
+   const wchar_t* ret = _RemoteCall(hProcess, L"kernel32.dll", "LoadLibraryW", dllPath);
+   if(ret != _CALL_SUCCESS){
+        wprintf(ret, GetLastError());
+        return FALSE;
+   }
+   ret = _RemoteCall(hProcess, L"HookDLL.dll", "SetPipeName", g_pipeName);
+   _putws(L"[Loader] SetPipeName on subprocess");
+   if(ret != _CALL_SUCCESS){
+        wprintf(ret, GetLastError());
+        return FALSE;
+   }
+    return TRUE;
+}
+
+// 主函数
 int wmain(int argc, wchar_t* argv[])
 {
     if (argc < 2)
@@ -50,73 +202,87 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    // 构建命令行字符串
+    // 启动命名管道服务端
+    if(!InitPipeServer())
+    {
+        return -1;
+    }
+    InitializeCriticalSection(&g_HandleCs);
+    CreateThread(NULL, 0, PipeServerThread, NULL, 0, NULL);
+    wchar_t RegFile[] = L"reg.dat";
+    if(!virReg.LoadBinary(RegFile)){
+        wprintf(L"[Loader] RegFile load failed %d\n", GetLastError());
+    }
+
+    // 构建命令行
     wchar_t cmdLine[32768] = {0};
     for (int i = 1; i < argc; i++)
     {
         if (i > 1) wcscat_s(cmdLine, L" ");
-        // 如果参数包含空格，需加引号（简单处理，假设参数本身不含引号）
-        if (wcschr(argv[i], L' '))
-        {
+        if (wcschr(argv[i], L' ')) {
             wcscat_s(cmdLine, L"\"");
             wcscat_s(cmdLine, argv[i]);
             wcscat_s(cmdLine, L"\"");
-        }
-        else
-        {
+        } else {
             wcscat_s(cmdLine, argv[i]);
         }
     }
 
+    // 创建子进程（挂起）
     STARTUPINFOW si = { sizeof(si) };
     PROCESS_INFORMATION pi;
-
-    // 创建挂起进程
     if (!CreateProcessW(NULL,
-                        cmdLine,
-                        NULL,
-                        NULL,
-                        FALSE,
-                        CREATE_SUSPENDED,  // 挂起以便注入
-                        NULL,
-                        NULL,
-                        &si,
-                        &pi))
+            cmdLine,
+            NULL,
+            NULL,
+            FALSE,
+            CREATE_SUSPENDED,
+            NULL,
+            NULL,
+            &si,
+            &pi))
     {
-        wprintf(L"CreateProcess failed: %d\n", GetLastError());
+        wprintf(L"[Loader] CreateProcess failed: %d\n", GetLastError());
         return 1;
     }
 
-    wprintf(L"Process created (PID: %d). Injecting DLL...\n", pi.dwProcessId);
+    wprintf(L"[Loader] Process created (PID: %d). Injecting DLL...\n", pi.dwProcessId);
 
-    // 获取当前 DLL 的完整路径（假设 HookDLL.dll 与 loader.exe 在同一目录）
+    // 获取当前目录下的 HookDLL.dll 路径
     wchar_t dllPath[MAX_PATH];
+    
     GetModuleFileNameW(NULL, dllPath, MAX_PATH);
     wchar_t* pSlash = wcsrchr(dllPath, L'\\');
     if (pSlash)
         *(pSlash + 1) = L'\0';
     wcscat_s(dllPath, L"HookDLL.dll");
+    LoadLibrary(dllPath);
 
+    // 注入 DLL
     if (!InjectDll(pi.hProcess, dllPath))
     {
-        wprintf(L"Injection failed, terminating process.\n");
+        wprintf(L"[Loader] Injection failed, terminating process.\n");
         TerminateProcess(pi.hProcess, 1);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
         return 1;
     }
 
-    wprintf(L"Injection successful, resuming thread.\n");
+    wprintf(L"[Loader] DLL injected, resuming thread.\n");
     ResumeThread(pi.hThread);
 
-    // 等待进程结束
+    // 等待子进程结束
     WaitForSingleObject(pi.hProcess, INFINITE);
-
     DWORD exitCode;
     GetExitCodeProcess(pi.hProcess, &exitCode);
-    wprintf(L"Process exited with code %d\n", exitCode);
+    wprintf(L"[Loader] Process exited with code %d\n", exitCode);
 
+    // 清理资源
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    DeleteCriticalSection(&g_HandleCs);
+
+    virReg.SaveBinary(RegFile);
+
     return 0;
 }
