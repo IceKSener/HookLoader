@@ -1,6 +1,6 @@
 #include "VirtualRegistry.h"
-#include <fstream>
-#include <algorithm>
+
+#include <functional>
 
 #include "Common.hpp"
 
@@ -180,15 +180,38 @@ LONG VirtualRegistry::DeleteKeyPath(HKEY parentId, const wstring& path) {
 // ------------------- 公有 API（加锁） -------------------
 
 LONG VirtualRegistry::CreateKey(HKEY parentId, const wstring& path, HKEY& newId, DWORD& disposition) {
+    wstring normPath = path;
+    // 去除尾部反斜杠
+    while (!normPath.empty() && normPath.back() == L'\\')
+        normPath.pop_back();
+    // 去除前导反斜杠
+    while (!normPath.empty() && normPath.front() == L'\\')
+        normPath.erase(0, 1);
+    // 空路径不能创建键
+    if (normPath.empty())
+        return ERROR_INVALID_PARAMETER;
+
     EnterCriticalSection(&cs_);
-    LONG ret = CreateKeyPath(parentId, path, newId, disposition);
+    LONG ret = CreateKeyPath(parentId, normPath, newId, disposition);
     LeaveCriticalSection(&cs_);
     return ret;
 }
 
 LONG VirtualRegistry::OpenKey(HKEY parentId, const wstring& path, HKEY& outId) {
+    wstring normPath = path;
+    // 去除尾部反斜杠
+    while (!normPath.empty() && normPath.back() == L'\\')
+        normPath.pop_back();
+    // 去除前导反斜杠（相对路径不应有，但容错处理）
+    while (!normPath.empty() && normPath.front() == L'\\')
+        normPath.erase(0, 1);
+    // 空路径表示打开父键本身
+    if (normPath.empty()) {
+        outId = parentId;
+        return ERROR_SUCCESS;
+    }
     EnterCriticalSection(&cs_);
-    LONG ret = OpenKeyPath(parentId, path, outId);
+    LONG ret = OpenKeyPath(parentId, normPath, outId);
     LeaveCriticalSection(&cs_);
     return ret;
 }

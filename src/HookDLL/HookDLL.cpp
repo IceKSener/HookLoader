@@ -1,14 +1,11 @@
 #include <stdio.h>
-#include <errno.h>
 #include <windows.h>
 #include <MinHook.h>
-#include <Shlwapi.h>
 
 #include "RegForm.hpp"
 #include "Common.hpp"
 
 using namespace std;
-// #pragma comment(lib, "Shlwapi.lib")
 
 // 原函数指针
 auto RealRegCreateKeyExW = RegCreateKeyExW;
@@ -340,6 +337,8 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
         DWORD mode = PIPE_READMODE_MESSAGE;
         SetNamedPipeHandleState(g_hPipe, &mode, NULL, NULL);
         
+#define CREATE_HOOK(func) (MH_CreateHook((LPVOID)func, (LPVOID)Hook##func, (LPVOID*)&Real##func) != MH_OK)
+        CREATE_HOOK(RegCreateKeyExW);
         // 创建所有注册表钩子
         if (
             MH_CreateHook((LPVOID)RegCreateKeyExW, (LPVOID)HookRegCreateKeyExW, (LPVOID*)&RealRegCreateKeyExW) != MH_OK ||
@@ -358,6 +357,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
             wprintf(L"[HookDLL] MH_CreateHook failed\n");
             return FALSE;
         }
+#undef CREATE_HOOK
 
         // 启用钩子
         if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)

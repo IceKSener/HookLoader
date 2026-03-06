@@ -34,18 +34,20 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
             break;
         }
         
-        wprintf(L"Op=%d HKEY_Path=%s\n",(int)req.op, virReg.GetPath(req.hKey).c_str());
         switch (req.op)
         {
             case REG_OP_CREATEKEY: {
                 res.ret = virReg.CreateKey(req.hKey, req.createKey.path, res.hKey, res.createKey.disposition);
+                wprintf(L"[Reg] CreateKey\t%s\\%s\n", virReg.GetPath(res.hKey).c_str(), req.createKey.path);
                 break;
             }
             case REG_OP_OPENKEY: {
                 res.ret = virReg.OpenKey(req.hKey, req.openKey.path, res.hKey);
+                wprintf(L"[Reg] OpenKey\t%s\\%s\n", virReg.GetPath(res.hKey).c_str(), req.openKey.path);
                 break;
             }
             case REG_OP_QUERYVALUE: {
+                wprintf(L"[Reg] QueryValue\t%s\n", virReg.GetPath(req.hKey).c_str());
                 DWORD type;
                 std::vector<BYTE> data;
                 res.ret = virReg.QueryValue(req.hKey, req.queryValue.valueName, type, data);
@@ -57,15 +59,18 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
                 break;
             }
             case REG_OP_SETVALUE: {
+                wprintf(L"[Reg] SetValue\t%s\n", virReg.GetPath(req.hKey).c_str());
                 std::vector<BYTE> data(req.setValue.data, req.setValue.data + req.setValue.dataLen);
                 res.ret = virReg.SetValue(req.hKey, req.setValue.valueName, req.setValue.type, data);
                 break;
             }
             case REG_OP_CLOSEKEY: {
+                wprintf(L"[Reg] CloseKey\t%s\n", virReg.GetPath(req.hKey).c_str());
                 res.ret = virReg.CloseKey(req.hKey);
                 break;
             }
             case REG_OP_ENUMKEY: {
+                wprintf(L"[Reg] EnumKey\t%s\n", virReg.GetPath(req.hKey).c_str());
                 std::wstring name;
                 res.ret = virReg.EnumKey(req.hKey, req.enumInfo.index, name);
                 if (res.ret == ERROR_SUCCESS) {
@@ -74,6 +79,7 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
                 break;
             }
             case REG_OP_ENUMVALUE: {
+                wprintf(L"[Reg] EnumValue\t%s\n", virReg.GetPath(req.hKey).c_str());
                 std::wstring valueName;
                 DWORD type;
                 std::vector<BYTE> data;
@@ -88,6 +94,7 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
                 break;
             }
             case REG_OP_QUERYINFOKEY: {
+                wprintf(L"[Reg] QueryInfo\t%s\n", virReg.GetPath(req.hKey).c_str());
                 std::wstring className;
                 res.ret = virReg.QueryInfoKey(req.hKey,
                     res.queryInfo.subKeys,
@@ -105,10 +112,12 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
                 break;
             }
             case REG_OP_DELETEKEY: {
+                wprintf(L"[Reg] DeleteKey\t%s\n", virReg.GetPath(req.hKey).c_str());
                 res.ret = virReg.DeleteKey(req.hKey, req.deleteKey.path);
                 break;
             }
             case REG_OP_DELETEVALUE: {
+                wprintf(L"[Reg] DeleteValue\t%s\n", virReg.GetPath(req.hKey).c_str());
                 res.ret = virReg.DeleteValue(req.hKey, req.deleteValue.valueName);
                 break;
             }
@@ -256,7 +265,7 @@ int wmain(int argc, wchar_t* argv[])
     if (pSlash)
         *(pSlash + 1) = L'\0';
     wcscat_s(dllPath, L"HookDLL.dll");
-    LoadLibrary(dllPath);
+    LoadLibraryW(dllPath);
 
     // 注入 DLL
     if (!InjectDll(pi.hProcess, dllPath))
@@ -283,6 +292,8 @@ int wmain(int argc, wchar_t* argv[])
     DeleteCriticalSection(&g_HandleCs);
 
     virReg.SaveBinary(RegFile);
+    wprintf(L"REG:\n%s", virReg.ToString().c_str());
+    getchar();
 
     return 0;
 }

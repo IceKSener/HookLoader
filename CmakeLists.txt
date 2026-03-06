@@ -1,0 +1,48 @@
+cmake_minimum_required(VERSION 3.10)
+project(HookLoader VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
+include_directories(include)
+file(GLOB_RECURSE HOOKDLL_CPP src/HookDLL/*.cpp)
+file(GLOB_RECURSE LOADER_CPP src/Loader/*.cpp)
+
+# ------------------- 定义库（DLL） -------------------
+add_library(HookDLL SHARED ${HOOKDLL_CPP})
+
+target_link_libraries(HookDLL minhook)
+if(MINGW)
+    set_target_properties(HookDLL PROPERTIES PREFIX "")
+    target_link_options(HookDLL PRIVATE
+        -s
+        -static
+        -Wl,--image-base=0x66000000
+    )
+elseif(MSVC)
+    target_link_options(HookDLL PRIVATE
+        /BASE:0x66000000
+        /DYNAMICBASE:NO
+        /MT
+    )
+endif()
+
+# ------------------- 定义可执行文件（EXE） -------------------
+add_executable(Loader ${LOADER_CPP})
+
+# 链接库
+target_link_libraries(Loader minhook)
+
+if(MINGW)
+    target_compile_options(Loader PRIVATE -municode)
+    target_link_options(Loader PRIVATE
+        -s
+        -static
+        -municode
+    )
+elseif(MSVC)
+    target_compile_options(Loader PRIVATE $<$<CONFIG:Release>:/MT>)
+    target_link_options(Loader PRIVATE $<$<CONFIG:Release>:/MT>)
+endif()
