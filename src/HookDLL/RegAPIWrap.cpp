@@ -130,7 +130,14 @@ LONG WINAPI HookRegQueryValueW(HKEY hKey, LPCWSTR lpSubKey, LPWSTR lpValue, PLON
 }
 
 LONG WINAPI HookRegSetValueW(HKEY hKey, LPCWSTR lpSubKey, DWORD dwType, LPCWSTR lpData, DWORD cbData) {
-    return HookRegSetValueExW(hKey, L"", 0, dwType, (const BYTE*)lpData, cbData);
+    if (dwType == REG_SZ || lpData==NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpSubKey != NULL && *lpSubKey != L'\0') {
+        LONG ret = HookRegOpenKeyExW(hKey, lpSubKey, 0, KEY_QUERY_VALUE, &hKey);
+        if (ret != ERROR_SUCCESS) return ret;
+    }
+    cbData = (DWORD)(wcslen(lpData) + 1) * sizeof(WCHAR);
+    return HookRegSetValueExW(hKey, nullptr, 0, dwType, (const BYTE*)lpData, cbData);
 }
 
 LONG WINAPI HookRegEnumKeyW(HKEY hKey, DWORD dwIndex, LPWSTR lpName, DWORD cchName) {
@@ -158,11 +165,14 @@ LONG WINAPI HookRegQueryValueA(HKEY hKey, LPCSTR lpSubKey, LPSTR lpValue, PLONG 
 }
 
 LONG WINAPI HookRegSetValueA(HKEY hKey, LPCSTR lpSubKey, DWORD dwType, LPCSTR lpData, DWORD cbData) {
-    wstring wSubKey = AnsiToWide(lpSubKey);
-    int wLen = MultiByteToWideChar(CP_ACP, 0, lpData, cbData, nullptr, 0);
-    vector<wchar_t> wData(wLen);
-    MultiByteToWideChar(CP_ACP, 0, lpData, cbData, wData.data(), wLen);
-    return HookRegSetValueExW(hKey, wSubKey.c_str(), 0, dwType, (const BYTE*)wData.data(), wLen * sizeof(wchar_t));
+    if (dwType == REG_SZ || lpData==NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpSubKey != NULL && *lpSubKey != L'\0') {
+        LONG ret = HookRegOpenKeyExA(hKey, lpSubKey, 0, KEY_QUERY_VALUE, &hKey);
+        if (ret != ERROR_SUCCESS) return ret;
+    }
+    cbData = (DWORD)(strlen(lpData) + 1);
+    return HookRegSetValueExA(hKey, nullptr, 0, dwType, (const BYTE*)lpData, cbData);
 }
 
 LONG WINAPI HookRegDeleteKeyA(HKEY hKey, LPCSTR lpSubKey) {
@@ -176,8 +186,8 @@ LONG WINAPI HookRegDeleteValueA(HKEY hKey, LPCSTR lpValueName) {
 }
 
 LONG WINAPI HookRegEnumKeyA(HKEY hKey, DWORD dwIndex, LPSTR lpName, DWORD cchName) {
-    wchar_t wName[256];
-    DWORD cchWName = 256;
+    wchar_t wName[REGFORM_MAX_NAME];
+    DWORD cchWName = REGFORM_MAX_NAME;
     LONG ret = HookRegEnumKeyExW(hKey, dwIndex, wName, &cchWName, nullptr, nullptr, nullptr, nullptr);
     if (ret == ERROR_SUCCESS) {
         string ansiName = WideToAnsi(wName);

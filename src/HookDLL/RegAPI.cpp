@@ -94,6 +94,8 @@ LONG WINAPI HookRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReser
 // RegSetValueExW
 LONG WINAPI HookRegSetValueExW(HKEY hKey, LPCWSTR lpValueName, DWORD Reserved, DWORD dwType, const BYTE* lpData, DWORD cbData)
 {
+    if (Reserved != 0)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_SETVALUE;
@@ -156,6 +158,9 @@ LONG WINAPI HookRegDeleteValueW(HKEY hKey, LPCWSTR lpValueName)
 // RegEnumKeyExW
 LONG WINAPI HookRegEnumKeyExW(HKEY hKey, DWORD dwIndex, LPWSTR lpName, LPDWORD lpcName, LPDWORD lpReserved, LPWSTR lpClass, LPDWORD lpcClass, PFILETIME lpftLastWriteTime)
 {
+    // TODO 未实现lpftLastWriteTime
+    if (lpReserved != NULL)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_ENUMKEY;

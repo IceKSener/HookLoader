@@ -135,6 +135,12 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
             ERR_HOOK(RegQueryValueExA) ||
             ERR_HOOK(RegQueryValueW) ||
             ERR_HOOK(RegQueryValueA) ||
+            ERR_HOOK(RegSetValueExA) ||
+            ERR_HOOK(RegSetValueW) ||
+            ERR_HOOK(RegSetValueA) ||
+            ERR_HOOK(RegEnumKeyExA) ||
+            ERR_HOOK(RegEnumKeyW) ||
+            ERR_HOOK(RegEnumKeyA) ||
 
             ERR_HOOK(CreateProcessW)
         )
