@@ -18,15 +18,12 @@ target_link_libraries(HookDLL minhook)
 if(MINGW)
     set_target_properties(HookDLL PROPERTIES PREFIX "")
     target_link_options(HookDLL PRIVATE
-        -s
-        -static
         -Wl,--image-base=0x66000000
     )
 elseif(MSVC)
     target_link_options(HookDLL PRIVATE
         /BASE:0x66000000
         /DYNAMICBASE:NO
-        /MT
     )
 endif()
 
@@ -39,11 +36,7 @@ target_link_libraries(Loader minhook)
 if(MINGW)
     target_compile_options(Loader PRIVATE -municode)
     target_link_options(Loader PRIVATE
-        -s
         -static
         -municode
     )
-elseif(MSVC)
-    target_compile_options(Loader PRIVATE $<$<CONFIG:Release>:/MT>)
-    target_link_options(Loader PRIVATE $<$<CONFIG:Release>:/MT>)
 endif()

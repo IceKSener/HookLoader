@@ -101,7 +101,6 @@ LONG VirtualRegistry::DeleteKeyInternal(HKEY parentId, const wstring& name) {
         parent->subkeys.erase(it);
         return ERROR_SUCCESS;
     }
-    // TOREAD
 
     // 递归收集所有后代节点ID
     vector<HKEY> toDelete;

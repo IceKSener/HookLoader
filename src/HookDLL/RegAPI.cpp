@@ -5,6 +5,8 @@
 // RegCreateKeyExW
 LONG WINAPI HookRegCreateKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, LPWSTR lpClass, DWORD dwOptions, REGSAM samDesired, LPSECURITY_ATTRIBUTES lpSecurityAttributes, PHKEY phkResult, LPDWORD lpdwDisposition)
 {
+    if (Reserved != 0)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_CREATEKEY;

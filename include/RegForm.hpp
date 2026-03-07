@@ -2,7 +2,13 @@
 #define REGFORM_HPP
 
 #include <windows.h>
+
 // 注册表操作协议定义
+
+#define REGFORM_MAX_PATH 512
+#define REGFORM_MAX_NAME 256
+#define REGFORM_DATA_LEN 4096
+
 enum RegOperation {
     REG_OP_CREATEKEY,
     REG_OP_OPENKEY,
@@ -23,28 +29,28 @@ struct RegRequest {
     union {
         // REG_OP_CREATEKEY
         struct {
-            wchar_t path[512];   // 子键路径
+            wchar_t path[REGFORM_MAX_PATH];   // 子键路径
             DWORD dwOptions;      // 创建选项
             DWORD samDesired;     // 访问权限
         } createKey;
 
         // REG_OP_OPENKEY
         struct {
-            wchar_t path[512];
+            wchar_t path[REGFORM_MAX_PATH];
             DWORD samDesired;
         } openKey;
 
         // REG_OP_QUERYVALUE
         struct {
-            wchar_t valueName[256];
+            wchar_t valueName[REGFORM_MAX_NAME];
         } queryValue;
 
         // REG_OP_SETVALUE
         struct {
-            wchar_t valueName[256];
+            wchar_t valueName[REGFORM_MAX_NAME];
             DWORD type;
             DWORD dataLen;        // 数据长度（字节）
-            BYTE data[4096];       // 值数据
+            BYTE data[REGFORM_DATA_LEN];       // 值数据
         } setValue;
 
         // REG_OP_ENUMKEY / REG_OP_ENUMVALUE
@@ -54,12 +60,12 @@ struct RegRequest {
 
         // REG_OP_DELETEKEY
         struct {
-            wchar_t path[512];
+            wchar_t path[REGFORM_MAX_PATH];
         } deleteKey;
 
         // REG_OP_DELETEVALUE
         struct {
-            wchar_t valueName[256];
+            wchar_t valueName[REGFORM_MAX_NAME];
         } deleteValue;
 
         // REG_OP_QUERYINFOKEY 无需额外参数
@@ -88,15 +94,15 @@ struct RegResponse {
 
         // REG_OP_ENUMKEY
         struct {
-            wchar_t name[256];     // 子键名称
+            wchar_t name[REGFORM_MAX_NAME];     // 子键名称
         } enumKey;
 
         // REG_OP_ENUMVALUE
         struct {
-            wchar_t valueName[256];
+            wchar_t valueName[REGFORM_MAX_NAME];
             DWORD type;
             DWORD dataLen;
-            BYTE data[4096];
+            BYTE data[REGFORM_DATA_LEN];
         } enumValue;
 
         // REG_OP_QUERYINFOKEY
@@ -109,7 +115,7 @@ struct RegResponse {
             DWORD maxValueLen;
             DWORD securityDescriptor;
             FILETIME lastWriteTime;
-            wchar_t className[256];
+            wchar_t className[REGFORM_MAX_NAME];
         } queryInfo;
 
         // 其他操作无需额外数据，可留空或仅占位

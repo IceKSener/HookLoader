@@ -18,8 +18,8 @@
 
 ``` cmd
 :: 如果使用的是MinGW
-cmake -B build -G "MinGW Makefiles"
-cmake --build build --config Release -j 4
+cmake -B build -DCMAKE_BUILD_TYPE=Release -G "MinGW Makefiles"
+cmake --build build --parallel 8
 ```
 
 或者如果使用的是非MinGW编译器的，输入

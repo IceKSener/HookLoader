@@ -3,7 +3,9 @@
 
 #include <windows.h>
 
-#define HOOK_FUNC(func) static auto Real##func = func; decltype(func) Hook##func
+#define HOOK_FUNC(func) \
+static auto Real##func = func; \
+decltype(func) Hook##func
 
 // 基础API
 
