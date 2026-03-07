@@ -1,6 +1,8 @@
 #include "VirtualRegistry.h"
 
 #include <functional>
+#include <sstream>
+#include <iomanip>
 
 #include "Common.hpp"
 
@@ -249,7 +251,29 @@ LONG VirtualRegistry::SetValue(HKEY keyId, const wstring& valueName, DWORD type,
     }
     Value v;
     v.type = type;
-    v.data = data;
+    if(type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ){
+        size_t dataLen = data.size();
+        vector<BYTE> normData=data;
+        if (dataLen%2) {
+            normData.back() = 0;
+            // normData.pop_back();
+        //     --dataLen;
+        }
+        // wchar_t *lastWChar = (wchar_t*)(normData.data()+dataLen-2);
+        // if(dataLen<2 || *lastWChar!=0) {
+        //     normData.push_back(0); normData.push_back(0);
+        //     dataLen+=2;
+        // }
+        // if (type == REG_MULTI_SZ) {
+        //     lastWChar = (wchar_t*)(normData.data()+dataLen-4);
+        //     if(dataLen<4 || *lastWChar!=0){
+        //         normData.push_back(0); normData.push_back(0);
+        //     }
+        // }
+        v.data = move(normData);
+    } else {
+        v.data = data;
+    }
     node->values[valueName] = move(v);
     LeaveCriticalSection(&cs_);
     return ERROR_SUCCESS;
@@ -572,23 +596,46 @@ bool VirtualRegistry::ReadNode(HANDLE hFile, Node& node) {
     return true;
 }
 
-wstring VirtualRegistry::_str(Node *node, int level){
-    wstring finalStr;
-    if(!node) finalStr;
-    for(int i=0 ; i<level ; ++i) finalStr+=L"  ";
-    finalStr+=L"[" + node->name + L"]\n";
-    for(const auto& pair: node->subkeys){
-        finalStr+=_str(GetNode(pair.second), level+1);
+wstring VirtualRegistry::_strNode(Node *node, int level){
+    wstringstream strBuilder, prefix;
+    wstring prefixStr;
+    if(!node) strBuilder;
+    for(int i=0 ; i<level ; ++i) prefix<<L"  ";
+    prefixStr = prefix.str();
+    strBuilder << prefixStr << L"[" << node->name << L"]\n";
+    for(const auto& pair: node->values){
+        strBuilder << _strValue(pair.first, pair.second, level);
     }
-    return finalStr;
+    for(const auto& pair: node->subkeys){
+        strBuilder << _strNode(GetNode(pair.second), level+1);
+    }
+    return strBuilder.str();
+}
+
+std::wstring VirtualRegistry::_strValue(const wstring& name, const Value &value, int level)
+{
+    wstringstream strBuilder, prefix;
+    wstring prefixStr;
+    for(int i=0 ; i<level ; ++i) prefix<<L"  ";
+    prefix << L' ';
+    prefixStr = prefix.str();
+    strBuilder << prefixStr<< L"<" << name << L">:";
+    int index=0;
+    for (auto it = value.data.begin(); it != value.data.end(); ++it, ++index) {
+    if (index % 8 == 0)
+        strBuilder << L'\n' << prefixStr;
+        strBuilder << setw(2) << setfill(L'0') << hex << *it << L' ';
+    }
+    strBuilder <<  L'\n';
+    return strBuilder.str();
 }
 
 wstring VirtualRegistry::ToString(){
-    return _str(GetNode(HKEY_CLASSES_ROOT), 0) + 
-        _str(GetNode(HKEY_CURRENT_USER), 0) + 
-        _str(GetNode(HKEY_LOCAL_MACHINE), 0) + 
-        _str(GetNode(HKEY_USERS), 0) + 
-        _str(GetNode(HKEY_CURRENT_CONFIG), 0);
+    return _strNode(GetNode(HKEY_CLASSES_ROOT), 0) + 
+        _strNode(GetNode(HKEY_CURRENT_USER), 0) + 
+        _strNode(GetNode(HKEY_LOCAL_MACHINE), 0) + 
+        _strNode(GetNode(HKEY_USERS), 0) + 
+        _strNode(GetNode(HKEY_CURRENT_CONFIG), 0);
 }
 
 wstring VirtualRegistry::GetPath(HKEY hKey){

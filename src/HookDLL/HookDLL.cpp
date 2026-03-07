@@ -5,6 +5,7 @@
 #include "RegForm.hpp"
 #include "Common.hpp"
 #include "HookDLL/RegAPI.hpp"
+#include "HookDLL/RegAPIWrap.hpp"
 
 using namespace std;
 
@@ -123,7 +124,18 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
             ERR_HOOK(RegEnumKeyExW) ||
             ERR_HOOK(RegEnumValueW) ||
             ERR_HOOK(RegQueryInfoKeyW) ||
-            
+
+            // 兼容旧API
+            ERR_HOOK(RegCreateKeyExA) ||
+            ERR_HOOK(RegCreateKeyW) ||
+            ERR_HOOK(RegCreateKeyA) ||
+            ERR_HOOK(RegOpenKeyExA) ||
+            ERR_HOOK(RegOpenKeyW) ||
+            ERR_HOOK(RegOpenKeyA) ||
+            ERR_HOOK(RegQueryValueExA) ||
+            ERR_HOOK(RegQueryValueW) ||
+            ERR_HOOK(RegQueryValueA) ||
+
             ERR_HOOK(CreateProcessW)
         )
         {

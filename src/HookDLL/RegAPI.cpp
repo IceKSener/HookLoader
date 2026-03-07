@@ -2,9 +2,15 @@
 
 #include "HookDLL/HookDLL.hpp"
 
+template <typename T>
+const T& min(const T& a, const T&b){
+    return b < a ? b : a;
+}
+
 // RegCreateKeyExW
 LONG WINAPI HookRegCreateKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, LPWSTR lpClass, DWORD dwOptions, REGSAM samDesired, LPSECURITY_ATTRIBUTES lpSecurityAttributes, PHKEY phkResult, LPDWORD lpdwDisposition)
 {
+    // TODO 未实现samDesired, lpSecurityAttributes的存储
     if (Reserved != 0)
         return ERROR_INVALID_PARAMETER;
     RegRequest req;
@@ -27,6 +33,7 @@ LONG WINAPI HookRegCreateKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, LPW
 // RegOpenKeyExW
 LONG WINAPI HookRegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD ulOptions, REGSAM samDesired, PHKEY phkResult)
 {
+    // TODO 未实现ulOptions的传参
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_OPENKEY;
@@ -45,6 +52,11 @@ LONG WINAPI HookRegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD ulOptions, REGS
 // RegQueryValueExW
 LONG WINAPI HookRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData)
 {
+    // TODO  未将lpcbData进行传参
+    if (lpReserved != NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpData != NULL && lpcbData == NULL)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_QUERYVALUE;
@@ -53,17 +65,30 @@ LONG WINAPI HookRegQueryValueExW(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReser
 
     if (!SendRequestAndReceive(req, res))
         return ERROR_INTERNAL_ERROR;
+    if (res.ret != ERROR_SUCCESS && res.ret != ERROR_MORE_DATA)
+        return res.ret;
 
+    const DWORD& dataLen = res.queryValue.dataLen;   // 实际数据大小（字节）
     if (lpType) *lpType = res.queryValue.type;
-    if (lpData && lpcbData) {
-        DWORD copyLen = (*lpcbData<res.queryValue.dataLen)? *lpcbData: res.queryValue.dataLen;
-        memcpy(lpData, res.queryValue.data, copyLen);
-        *lpcbData = copyLen;
-    } else if (lpcbData) {
-        *lpcbData = res.queryValue.dataLen;
+    if (lpData == NULL)      // 仅查询缓冲区大小
+    {
+        if (lpcbData != NULL)
+            *lpcbData = dataLen;
+        return ERROR_SUCCESS;
     }
 
-    return res.ret;
+    if (*lpcbData < dataLen || res.ret == ERROR_MORE_DATA)
+    {
+        *lpcbData = dataLen;        // 告诉用户实际需要的大小
+        return ERROR_MORE_DATA;     // 缓冲区不足
+    }
+    else // ret == ERROR_SUCCESS
+    {
+        // 服务端返回了完整数据，复制到用户缓冲区
+        memcpy(lpData, res.queryValue.data, dataLen);
+        *lpcbData = dataLen;
+        return ERROR_SUCCESS;
+    }
 }
 
 // RegSetValueExW
@@ -75,7 +100,7 @@ LONG WINAPI HookRegSetValueExW(HKEY hKey, LPCWSTR lpValueName, DWORD Reserved, D
     req.hKey = hKey;
     if (lpValueName) wcscpy_s(req.setValue.valueName, lpValueName);
     req.setValue.type = dwType;
-    req.setValue.dataLen = (cbData<(DWORD)sizeof(req.setValue.data))? cbData: (DWORD)sizeof(req.setValue.data);
+    req.setValue.dataLen = min(cbData, (DWORD)REGFORM_DATA_LEN);
     memcpy(req.setValue.data, lpData, req.setValue.dataLen);
 
     if (!SendRequestAndReceive(req, res))

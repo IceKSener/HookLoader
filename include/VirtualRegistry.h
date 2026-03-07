@@ -77,7 +77,8 @@ private:
     bool WriteNode(HANDLE hFile, const Node* node);
     bool ReadNode(HANDLE hFile, Node& node);
 
-    std::wstring _str(Node* node, int level);
+    std::wstring _strNode(Node* node, int level);
+    std::wstring _strValue(const std::wstring& name, const Value& value, int level);
 };
 
 #endif // VIRTUALREGISTRY_H

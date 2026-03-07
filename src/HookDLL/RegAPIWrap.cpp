@@ -45,26 +45,24 @@ LONG WINAPI HookRegOpenKeyExA(HKEY hKey, LPCSTR lpSubKey, DWORD ulOptions, REGSA
 LONG WINAPI HookRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData) {
     wstring wValueName = AnsiToWide(lpValueName);
     DWORD type = 0;
-    DWORD dataLenW = 0;
-    LONG ret = HookRegQueryValueExW(hKey, wValueName.c_str(), lpReserved, &type, nullptr, &dataLenW);
-    if (ret != ERROR_SUCCESS && ret != ERROR_MORE_DATA) return ret;
-    if (lpType) *lpType = type;
+    DWORD dataLen = 0;
+    LONG ret = HookRegQueryValueExW(hKey, wValueName.c_str(), lpReserved, &type, nullptr, &dataLen);
+    if (ret != ERROR_SUCCESS) return ret;
 
     if (type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ) {
-        vector<wchar_t> wData(dataLenW / sizeof(wchar_t) + 1);
-        DWORD dataLenWActual = dataLenW;
-        ret = HookRegQueryValueExW(hKey, wValueName.c_str(), lpReserved, &type, (LPBYTE)wData.data(), &dataLenWActual);
+        vector<wchar_t> wData(dataLen / sizeof(wchar_t) + 1);
+        ret = HookRegQueryValueExW(hKey, wValueName.c_str(), lpReserved, lpType, (LPBYTE)wData.data(), &dataLen);
         if (ret != ERROR_SUCCESS) return ret;
 
         string ansiData = WideToAnsi(wData.data());
-        DWORD ansiDataLen = (DWORD)ansiData.size() + 1;
+        dataLen = (DWORD)ansiData.size() + 1;
         if (lpData && lpcbData) {
-            DWORD copyLen = min(*lpcbData, ansiDataLen);
+            DWORD copyLen = min(*lpcbData, dataLen);
             memcpy(lpData, ansiData.c_str(), copyLen);
             *lpcbData = copyLen;
-            if (copyLen < ansiDataLen) return ERROR_MORE_DATA;
+            if (copyLen < dataLen) return ERROR_MORE_DATA;
         } else if (lpcbData) {
-            *lpcbData = ansiDataLen;
+            *lpcbData = dataLen;
         }
         return ERROR_SUCCESS;
     } else {
@@ -120,17 +118,15 @@ LONG WINAPI HookRegCreateKeyW(HKEY hKey, LPCWSTR lpSubKey, PHKEY phkResult) {
 }
 
 LONG WINAPI HookRegOpenKeyW(HKEY hKey, LPCWSTR lpSubKey, PHKEY phkResult) {
-    return HookRegOpenKeyExW(hKey, lpSubKey, 0, KEY_ALL_ACCESS, phkResult);
+    return HookRegOpenKeyExW(hKey, lpSubKey, 0, KEY_READ, phkResult);
 }
 
 LONG WINAPI HookRegQueryValueW(HKEY hKey, LPCWSTR lpSubKey, LPWSTR lpValue, PLONG lpcbValue) {
-    DWORD type = REG_SZ;
-    DWORD dataLen = *lpcbValue;
-    LONG ret = HookRegQueryValueExW(hKey, L"", nullptr, &type, (LPBYTE)lpValue, &dataLen);
-    if (ret == ERROR_SUCCESS || ret == ERROR_MORE_DATA) {
-        *lpcbValue = dataLen;
+    if (lpSubKey != NULL && *lpSubKey != L'\0') {
+        LONG ret = HookRegOpenKeyExW(hKey, lpSubKey, 0, KEY_QUERY_VALUE, &hKey);
+        if (ret != ERROR_SUCCESS) return ret;
     }
-    return ret;
+    return HookRegQueryValueExW(hKey, nullptr , nullptr, nullptr, (LPBYTE)lpValue, (LPDWORD)lpcbValue);
 }
 
 LONG WINAPI HookRegSetValueW(HKEY hKey, LPCWSTR lpSubKey, DWORD dwType, LPCWSTR lpData, DWORD cbData) {
@@ -150,32 +146,15 @@ LONG WINAPI HookRegCreateKeyA(HKEY hKey, LPCSTR lpSubKey, PHKEY phkResult) {
 }
 
 LONG WINAPI HookRegOpenKeyA(HKEY hKey, LPCSTR lpSubKey, PHKEY phkResult) {
-    wstring wSubKey = AnsiToWide(lpSubKey);
-    return HookRegOpenKeyExW(hKey, wSubKey.c_str(), 0, KEY_ALL_ACCESS, phkResult);
+    return HookRegOpenKeyExA(hKey, lpSubKey, 0, KEY_READ, phkResult);
 }
-// TOREAD
+
 LONG WINAPI HookRegQueryValueA(HKEY hKey, LPCSTR lpSubKey, LPSTR lpValue, PLONG lpcbValue) {
-    wstring wSubKey = AnsiToWide(lpSubKey);
-    DWORD type = REG_SZ;
-    DWORD dataLenW = *lpcbValue;
-    vector<wchar_t> wBuffer(dataLenW / sizeof(wchar_t) + 1);
-    LONG ret = HookRegQueryValueExW(hKey, L"", nullptr, &type, (LPBYTE)wBuffer.data(), &dataLenW);
-    if (ret == ERROR_SUCCESS || ret == ERROR_MORE_DATA) {
-        if (ret == ERROR_SUCCESS && lpValue) {
-            string ansiStr = WideToAnsi(wBuffer.data());
-            DWORD ansiBytes = (DWORD)ansiStr.size() + 1;
-            if (ansiBytes <= *lpcbValue) {
-                memcpy(lpValue, ansiStr.c_str(), ansiBytes);
-                *lpcbValue = ansiBytes;
-            } else {
-                *lpcbValue = ansiBytes;
-                ret = ERROR_MORE_DATA;
-            }
-        } else {
-            *lpcbValue = dataLenW; // 粗略估计
-        }
+    if (lpSubKey != NULL && *lpSubKey != L'\0') {
+        LONG ret = HookRegOpenKeyExA(hKey, lpSubKey, 0, KEY_QUERY_VALUE, &hKey);
+        if (ret != ERROR_SUCCESS) return ret;
     }
-    return ret;
+    return HookRegQueryValueExA(hKey, nullptr , nullptr, nullptr, (LPBYTE)lpValue, (LPDWORD)lpcbValue);
 }
 
 LONG WINAPI HookRegSetValueA(HKEY hKey, LPCSTR lpSubKey, DWORD dwType, LPCSTR lpData, DWORD cbData) {

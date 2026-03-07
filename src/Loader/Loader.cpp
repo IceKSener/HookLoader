@@ -37,17 +37,17 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
         switch (req.op)
         {
             case REG_OP_CREATEKEY: {
+                wprintf(L"[Reg] CreateKey\t%s\\%s\n", virReg.GetPath(req.hKey).c_str(), req.createKey.path);
                 res.ret = virReg.CreateKey(req.hKey, req.createKey.path, res.hKey, res.createKey.disposition);
-                wprintf(L"[Reg] CreateKey\t%s\\%s\n", virReg.GetPath(res.hKey).c_str(), req.createKey.path);
                 break;
             }
             case REG_OP_OPENKEY: {
+                wprintf(L"[Reg] OpenKey\t%s\\%s\n", virReg.GetPath(req.hKey).c_str(), req.openKey.path);
                 res.ret = virReg.OpenKey(req.hKey, req.openKey.path, res.hKey);
-                wprintf(L"[Reg] OpenKey\t%s\\%s\n", virReg.GetPath(res.hKey).c_str(), req.openKey.path);
                 break;
             }
             case REG_OP_QUERYVALUE: {
-                wprintf(L"[Reg] QueryValue\t%s\n", virReg.GetPath(req.hKey).c_str());
+                wprintf(L"[Reg] QueryValue\t%s.%s\n", virReg.GetPath(req.hKey).c_str(), req.queryValue.valueName);
                 DWORD type;
                 std::vector<BYTE> data;
                 res.ret = virReg.QueryValue(req.hKey, req.queryValue.valueName, type, data);
@@ -59,8 +59,10 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
                 break;
             }
             case REG_OP_SETVALUE: {
-                wprintf(L"[Reg] SetValue\t%s\n", virReg.GetPath(req.hKey).c_str());
+                wprintf(L"[Reg] SetValue\t%s.%s\n", virReg.GetPath(req.hKey).c_str(), req.setValue.valueName);
+                // wprintf(L"[...] Size=%d\n", req.setValue.dataLen);
                 std::vector<BYTE> data(req.setValue.data, req.setValue.data + req.setValue.dataLen);
+                // wprintf(L"[...] data Size=%d\n", data.size());
                 res.ret = virReg.SetValue(req.hKey, req.setValue.valueName, req.setValue.type, data);
                 break;
             }
@@ -293,7 +295,7 @@ int wmain(int argc, wchar_t* argv[])
 
     virReg.SaveBinary(RegFile);
     wprintf(L"REG:\n%s", virReg.ToString().c_str());
-    getchar();
+    // getchar();
 
     return 0;
 }
