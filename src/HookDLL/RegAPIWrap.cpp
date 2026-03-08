@@ -239,23 +239,26 @@ LONG WINAPI HookRegEnumValueA(HKEY hKey, DWORD dwIndex, LPSTR lpValueName, LPDWO
 }
 
 LONG WINAPI HookRegQueryInfoKeyA(HKEY hKey, LPSTR lpClass, LPDWORD lpcClass, LPDWORD lpReserved, LPDWORD lpcSubKeys, LPDWORD lpcMaxSubKeyLen, LPDWORD lpcMaxClassLen, LPDWORD lpcValues, LPDWORD lpcMaxValueNameLen, LPDWORD lpcMaxValueLen, LPDWORD lpcbSecurityDescriptor, PFILETIME lpftLastWriteTime) {
-    wchar_t wClass[256];
-    DWORD wClassLen = 256;
-    LONG ret = HookRegQueryInfoKeyW(hKey, wClass, &wClassLen, lpReserved, lpcSubKeys, lpcMaxSubKeyLen, lpcMaxClassLen, lpcValues, lpcMaxValueNameLen, lpcMaxValueLen, lpcbSecurityDescriptor, lpftLastWriteTime);
-    if (ret != ERROR_SUCCESS) return ret;
-
-    if (lpClass && lpcClass) {
-        string ansiClass = WideToAnsi(wClass);
-        DWORD ansiClassLen = (DWORD)ansiClass.size() + 1;
-        if (*lpcClass < ansiClassLen) {
-            *lpcClass = ansiClassLen;
+    if (lpClass != NULL && lpcClass == NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpClass || lpcClass) {
+        wchar_t wClass[REGFORM_MAX_NAME+1];
+        DWORD wClassLen = REGFORM_MAX_NAME+1;
+        LONG ret = HookRegQueryInfoKeyW(hKey, wClass, &wClassLen, lpReserved, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+        if (ret != ERROR_SUCCESS)
+            return ret;
+        string className = WideToAnsi(wClass);
+        DWORD classLen = className.length();
+        if (lpClass && *lpcClass<classLen+1) {
+            *lpcClass = classLen;
             return ERROR_MORE_DATA;
         }
-        memcpy(lpClass, ansiClass.c_str(), ansiClassLen);
-        *lpcClass = ansiClassLen;
-    } else if (lpcClass) {
-        string ansiClass = WideToAnsi(wClass);
-        *lpcClass = (DWORD)ansiClass.size() + 1;
+        HookRegQueryInfoKeyW(hKey, nullptr, nullptr, lpReserved, lpcSubKeys, lpcMaxSubKeyLen, lpcMaxClassLen, lpcValues, lpcMaxValueNameLen, lpcMaxValueLen, lpcbSecurityDescriptor, lpftLastWriteTime);
+        *lpcClass = classLen;
+        if (lpClass)
+            strcpy(lpClass, className.c_str());
+        return ERROR_SUCCESS;
+    } else {
+        return HookRegQueryInfoKeyW(hKey, nullptr, nullptr, lpReserved, lpcSubKeys, lpcMaxSubKeyLen, lpcMaxClassLen, lpcValues, lpcMaxValueNameLen, lpcMaxValueLen, lpcbSecurityDescriptor, lpftLastWriteTime);
     }
-    return ERROR_SUCCESS;
 }

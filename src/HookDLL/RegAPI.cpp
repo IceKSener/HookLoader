@@ -233,6 +233,11 @@ LONG WINAPI HookRegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName, LPDW
 // RegQueryInfoKeyW
 LONG WINAPI HookRegQueryInfoKeyW(HKEY hKey, LPWSTR lpClass, LPDWORD lpcClass, LPDWORD lpReserved, LPDWORD lpcSubKeys, LPDWORD lpcMaxSubKeyLen, LPDWORD lpcMaxClassLen, LPDWORD lpcValues, LPDWORD lpcMaxValueNameLen, LPDWORD lpcMaxValueLen, LPDWORD lpcbSecurityDescriptor, FILETIME* lpftLastWriteTime)
 {
+    // TODO lpClass未存储
+    if (lpReserved != NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpClass != NULL && lpcClass == NULL)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_QUERYINFOKEY;
@@ -244,6 +249,11 @@ LONG WINAPI HookRegQueryInfoKeyW(HKEY hKey, LPWSTR lpClass, LPDWORD lpcClass, LP
     if (res.ret != ERROR_SUCCESS)
         return res.ret;
 
+    DWORD classNameLen = wcsnlen(res.queryInfo.className, REGFORM_MAX_NAME);
+    if (lpClass && *lpcClass<classNameLen+1) {
+        *lpcClass = classNameLen;
+        return ERROR_MORE_DATA;
+    }
     // 填充各输出参数（如果指针非空）
     if (lpcSubKeys) *lpcSubKeys = res.queryInfo.subKeys;
     if (lpcMaxSubKeyLen) *lpcMaxSubKeyLen = res.queryInfo.maxSubKeyLen;
@@ -255,21 +265,12 @@ LONG WINAPI HookRegQueryInfoKeyW(HKEY hKey, LPWSTR lpClass, LPDWORD lpcClass, LP
     if (lpftLastWriteTime) *lpftLastWriteTime = res.queryInfo.lastWriteTime;
 
     // 处理类名
-    if (lpClass && lpcClass) {
-        // 计算实际需要的字符数（包括 null 终止符）
-        size_t required = wcslen(res.queryInfo.className) + 1;
-        DWORD bufferSize = *lpcClass;   // 输入时缓冲区的容量（字符数）
-
-        if (bufferSize > 0) {
-            wcsncpy(lpClass, res.queryInfo.className, bufferSize - 1);
-            lpClass[bufferSize - 1] = L'\0';
+    if (lpcClass) {
+        *lpcClass = classNameLen;
+        if (lpClass) {
+            wcsncpy(lpClass, res.queryInfo.className, classNameLen);
+            lpClass[classNameLen] = L'\0';
         }
-        *lpcClass = (DWORD)required;
     }
-    else if (lpcClass) {
-        // lpClass 为 NULL，仅返回所需大小
-        *lpcClass = (DWORD)wcslen(res.queryInfo.className) + 1;
-    }
-
     return ERROR_SUCCESS;
 }
