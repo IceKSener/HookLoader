@@ -5,6 +5,7 @@
 
 // 注册表操作协议定义
 
+// TODO 最大长度溢出行为未定义
 #define REGFORM_MAX_PATH 512
 #define REGFORM_MAX_NAME 256
 #define REGFORM_DATA_LEN 4096

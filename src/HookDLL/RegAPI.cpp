@@ -125,14 +125,17 @@ LONG WINAPI HookRegCloseKey(HKEY hKey)
     return res.ret;
 }
 
-// RegDeleteKeyW
-LONG WINAPI HookRegDeleteKeyW(HKEY hKey, LPCWSTR lpSubKey)
+// RegDeleteKeyExW
+LONG WINAPI HookRegDeleteKeyExW(HKEY hKey, LPCWSTR lpSubKey, REGSAM samDesired, DWORD Reserved)
 {
+    // TODO samDesired的处理
+    if (lpSubKey==NULL || *lpSubKey==0 || Reserved!=0)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_DELETEKEY;
     req.hKey = hKey;
-    if (lpSubKey) wcscpy_s(req.deleteKey.path, lpSubKey);
+    wcscpy_s(req.deleteKey.path, lpSubKey);
 
     if (!SendRequestAndReceive(req, res))
         return ERROR_INTERNAL_ERROR;
@@ -182,6 +185,12 @@ LONG WINAPI HookRegEnumKeyExW(HKEY hKey, DWORD dwIndex, LPWSTR lpName, LPDWORD l
 // RegEnumValueW
 LONG WINAPI HookRegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName, LPDWORD lpcValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData)
 {
+    if (lpReserved != NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpValueName != NULL && lpcValueName == NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpData != NULL && lpcbData == NULL)
+        return ERROR_INVALID_PARAMETER;
     RegRequest req;
     RegResponse res;
     req.op = REG_OP_ENUMVALUE;
@@ -191,18 +200,32 @@ LONG WINAPI HookRegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName, LPDW
     if (!SendRequestAndReceive(req, res))
         return ERROR_INTERNAL_ERROR;
 
-    if (res.ret == ERROR_SUCCESS) {
-        if (lpValueName && lpcValueName) {
-            wcsncpy(lpValueName, res.enumValue.valueName, *lpcValueName - 1);
-            lpValueName[*lpcValueName - 1] = L'\0';
-            *lpcValueName = (DWORD)wcslen(lpValueName) + 1;
+    if (res.ret != ERROR_SUCCESS)
+        return res.ret;
+
+    DWORD nameLen = wcsnlen(res.enumValue.valueName, REGFORM_MAX_NAME)
+        , dataLen = (DWORD)res.enumValue.dataLen;
+    if (lpValueName && *lpcValueName<nameLen+1) {
+        *lpcValueName = nameLen+1;
+        return ERROR_MORE_DATA;
+    }
+    if (lpData && *lpcbData<dataLen) {
+        *lpcbData = dataLen;
+        return ERROR_MORE_DATA;
+    }
+    
+    if (lpcValueName) {
+        *lpcValueName = nameLen;
+        if (lpValueName) {
+            wcsncpy(lpValueName, res.enumValue.valueName, nameLen);
+            lpValueName[nameLen] = L'\0';
         }
-        if (lpType) *lpType = res.enumValue.type;
-        if (lpData && lpcbData) {
-            DWORD copyLen = (*lpcbData<res.enumValue.dataLen)? *lpcbData: res.enumValue.dataLen;
-            memcpy(lpData, res.enumValue.data, copyLen);
-            *lpcbData = copyLen;
-        }
+    }
+    if (lpType) *lpType = res.enumValue.type;
+    if (lpcbData) {
+        *lpcbData = dataLen;
+        if (lpData)
+            memcpy(lpData, res.enumValue.data, dataLen);
     }
     return res.ret;
 }

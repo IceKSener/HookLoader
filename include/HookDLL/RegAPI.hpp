@@ -14,7 +14,7 @@ HOOK_FUNC(RegOpenKeyExW);
 HOOK_FUNC(RegQueryValueExW);
 HOOK_FUNC(RegSetValueExW);
 HOOK_FUNC(RegCloseKey);
-HOOK_FUNC(RegDeleteKeyW);
+HOOK_FUNC(RegDeleteKeyExW);
 HOOK_FUNC(RegDeleteValueW);
 HOOK_FUNC(RegEnumKeyExW);
 HOOK_FUNC(RegEnumValueW);

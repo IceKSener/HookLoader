@@ -43,6 +43,8 @@ LONG WINAPI HookRegOpenKeyExA(HKEY hKey, LPCSTR lpSubKey, DWORD ulOptions, REGSA
 }
 
 LONG WINAPI HookRegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData) {
+    if (lpData != NULL && lpcbData == NULL)
+        return ERROR_INVALID_PARAMETER;
     wstring wValueName = AnsiToWide(lpValueName);
     DWORD type = 0;
     DWORD dataLen = 0;
@@ -80,6 +82,11 @@ LONG WINAPI HookRegSetValueExA(HKEY hKey, LPCSTR lpValueName, DWORD Reserved, DW
     } else {
         return HookRegSetValueExW(hKey, wValueName.c_str(), Reserved, dwType, lpData, cbData);
     }
+}
+
+LONG WINAPI HookRegDeleteKeyExA(HKEY hKey, LPCSTR lpSubKey, REGSAM samDesired, DWORD Reserved) {
+    wstring wSubKey = AnsiToWide(lpSubKey);
+    return HookRegDeleteKeyExW(hKey, wSubKey.c_str(), samDesired, Reserved);
 }
 
 LONG WINAPI HookRegEnumKeyExA(HKEY hKey, DWORD dwIndex, LPSTR lpName, LPDWORD lpcName, LPDWORD lpReserved, LPSTR lpClass, LPDWORD lpcClass, PFILETIME lpftLastWriteTime) {
@@ -140,6 +147,10 @@ LONG WINAPI HookRegSetValueW(HKEY hKey, LPCWSTR lpSubKey, DWORD dwType, LPCWSTR 
     return HookRegSetValueExW(hKey, nullptr, 0, dwType, (const BYTE*)lpData, cbData);
 }
 
+LONG WINAPI HookRegDeleteKeyW(HKEY hKey, LPCWSTR lpSubKey) {
+    return HookRegDeleteKeyExW(hKey, lpSubKey, KEY_WOW64_64KEY, 0);
+}
+
 LONG WINAPI HookRegEnumKeyW(HKEY hKey, DWORD dwIndex, LPWSTR lpName, DWORD cchName) {
     DWORD cchNameActual = cchName;
     return HookRegEnumKeyExW(hKey, dwIndex, lpName, &cchNameActual, nullptr, nullptr, nullptr, nullptr);
@@ -176,8 +187,7 @@ LONG WINAPI HookRegSetValueA(HKEY hKey, LPCSTR lpSubKey, DWORD dwType, LPCSTR lp
 }
 
 LONG WINAPI HookRegDeleteKeyA(HKEY hKey, LPCSTR lpSubKey) {
-    wstring wSubKey = AnsiToWide(lpSubKey);
-    return HookRegDeleteKeyW(hKey, wSubKey.c_str());
+    return HookRegDeleteKeyExA(hKey, lpSubKey, KEY_WOW64_64KEY, 0);
 }
 
 LONG WINAPI HookRegDeleteValueA(HKEY hKey, LPCSTR lpValueName) {
@@ -202,55 +212,28 @@ LONG WINAPI HookRegEnumKeyA(HKEY hKey, DWORD dwIndex, LPSTR lpName, DWORD cchNam
 }
 
 LONG WINAPI HookRegEnumValueA(HKEY hKey, DWORD dwIndex, LPSTR lpValueName, LPDWORD lpcValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData) {
-    wchar_t wValueName[256];
-    DWORD wValueNameLen = 256;
-    DWORD type;
-    DWORD dataLenW = 0;
-    LONG ret = HookRegEnumValueW(hKey, dwIndex, wValueName, &wValueNameLen, lpReserved, &type, nullptr, &dataLenW);
-    if (ret != ERROR_SUCCESS && ret != ERROR_MORE_DATA) return ret;
-    if (lpType) *lpType = type;
-
-    vector<BYTE> wData;
-    if (lpData && lpcbData) {
-        wData.resize(dataLenW);
-        DWORD dataLenWActual = dataLenW;
-        ret = HookRegEnumValueW(hKey, dwIndex, wValueName, &wValueNameLen, lpReserved, &type, wData.data(), &dataLenWActual);
-        if (ret != ERROR_SUCCESS) return ret;
+    if (lpValueName != NULL && lpcValueName == NULL)
+        return ERROR_INVALID_PARAMETER;
+    if (lpData != NULL && lpcbData == NULL)
+        return ERROR_INVALID_PARAMETER;
+    wchar_t wValueName[REGFORM_MAX_NAME+1];
+    DWORD wValueNameLen = REGFORM_MAX_NAME+1;
+    LONG ret = HookRegEnumValueW(hKey, dwIndex, wValueName, &wValueNameLen, lpReserved, nullptr, nullptr, nullptr);
+    if (ret != ERROR_SUCCESS) return ret;
+    string valueName = WideToAnsi(wValueName);
+    DWORD nameLen = valueName.length();
+    if (lpValueName && *lpcValueName<nameLen+1) {
+        *lpcValueName = nameLen+1;
+        return ERROR_MORE_DATA;
     }
 
-    if (lpValueName && lpcValueName) {
-        string ansiValueName = WideToAnsi(wValueName);
-        DWORD ansiNameLen = (DWORD)ansiValueName.size() + 1;
-        if (*lpcValueName < ansiNameLen) {
-            *lpcValueName = ansiNameLen;
-            return ERROR_MORE_DATA;
-        }
-        memcpy(lpValueName, ansiValueName.c_str(), ansiNameLen);
-        *lpcValueName = ansiNameLen;
-    }
+    ret = HookRegEnumValueW(hKey, dwIndex, nullptr, nullptr, lpReserved, lpType, lpData, lpcbData);
+    if (ret != ERROR_SUCCESS) return ret;
 
-    if (lpData && lpcbData) {
-        if (type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ) {
-            string ansiData = WideToAnsi((LPCWSTR)wData.data());
-            DWORD ansiDataLen = (DWORD)ansiData.size() + 1;
-            if (*lpcbData < ansiDataLen) {
-                *lpcbData = ansiDataLen;
-                return ERROR_MORE_DATA;
-            }
-            memcpy(lpData, ansiData.c_str(), ansiDataLen);
-            *lpcbData = ansiDataLen;
-        } else {
-            DWORD copyLen = min(*lpcbData, (DWORD)wData.size());
-            memcpy(lpData, wData.data(), copyLen);
-            *lpcbData = copyLen;
-            if (copyLen < wData.size()) return ERROR_MORE_DATA;
-        }
-    } else if (lpcbData) {
-        if (type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ) {
-            *lpcbData = dataLenW; // 粗略估计
-        } else {
-            *lpcbData = dataLenW;
-        }
+    if (lpcValueName) {
+        *lpcValueName = nameLen;
+        if (lpValueName)
+            strcpy(lpValueName, valueName.data());
     }
     return ERROR_SUCCESS;
 }

@@ -83,13 +83,10 @@ DWORD WINAPI ClientThread(LPVOID lpParam){
             case REG_OP_ENUMVALUE: {
                 wprintf(L"[Reg] EnumValue\t%s\n", virReg.GetPath(req.hKey).c_str());
                 std::wstring valueName;
-                DWORD type;
                 std::vector<BYTE> data;
-                res.ret = virReg.EnumValue(req.hKey, req.enumInfo.index, valueName, type, data);
+                res.ret = virReg.EnumValue(req.hKey, req.enumInfo.index, valueName, res.enumValue.type, data);
                 if (res.ret == ERROR_SUCCESS) {
-                    auto& ResValueName = res.enumValue.valueName;
-                    wcsncpy_s(ResValueName, valueName.c_str(), _TRUNCATE);
-                    res.enumValue.type = type;
+                    wcsncpy_s(res.enumValue.valueName, valueName.c_str(), _TRUNCATE);
                     res.enumValue.dataLen = min((DWORD)data.size(), (DWORD)sizeof(res.enumValue.data));
                     memcpy(res.enumValue.data, data.data(), res.enumValue.dataLen);
                 }

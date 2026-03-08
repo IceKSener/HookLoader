@@ -12,6 +12,7 @@ HOOK_FUNC(RegCreateKeyExA);
 HOOK_FUNC(RegOpenKeyExA);
 HOOK_FUNC(RegQueryValueExA);
 HOOK_FUNC(RegSetValueExA);
+HOOK_FUNC(RegDeleteKeyExA);
 HOOK_FUNC(RegEnumKeyExA);
 
 // 旧版 Unicode API 钩子函数
@@ -19,6 +20,7 @@ HOOK_FUNC(RegCreateKeyW);
 HOOK_FUNC(RegOpenKeyW);
 HOOK_FUNC(RegQueryValueW);
 HOOK_FUNC(RegSetValueW);
+HOOK_FUNC(RegDeleteKeyW);
 HOOK_FUNC(RegEnumKeyW);
 
 // 旧版 ANSI API 钩子函数
