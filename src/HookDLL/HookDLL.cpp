@@ -89,7 +89,7 @@ BOOL WINAPI HookCreateProcessW(LPCWSTR lpApp, LPWSTR lpCmd, LPSECURITY_ATTRIBUTE
 extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
 {
     if (g_hPipe == INVALID_HANDLE_VALUE) {
-        wprintf(L"[HookDLL] HookDLL loaded into process %d\n", GetCurrentProcessId());
+        wprintf(L"[HookDLL] HookDLL is loaded into process %d\n", GetCurrentProcessId());
         EnterCriticalSection(&g_cs);
         wcscpy_s(g_pipeName, pipeName);
         g_hPipe = CreateFileW(

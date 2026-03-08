@@ -210,9 +210,10 @@ int wmain(int argc, wchar_t* argv[]) {
     int argi = 1;
     while (true) {
         if (argi >= argc) {
-            _putws(L"Usage: loader.exe [--debug|-D] [--error|-E] [--silent|-S] <command> [args...]");
+            _putws(L"Usage: loader.exe [--debug|-D] [--error|-E] [--silent|-S] [--regfile|-RF <file>] <command> [args...]");
             return 1;
         }
+        // 日志输出
         if (wcscmp(argv[argi], L"--debug")==0 ||
             wcscmp(argv[argi], L"-D")==0
         ) Config.logLevel = LOADER_LOG_ALL;
@@ -222,6 +223,16 @@ int wmain(int argc, wchar_t* argv[]) {
         else if (wcscmp(argv[argi], L"--silent")==0 ||
             wcscmp(argv[argi], L"-S")==0
         ) Config.logLevel = LOADER_LOG_SILENT;
+        // 虚拟注册表文件存储
+        else if (wcscmp(argv[argi], L"--regfile")==0 ||
+            wcscmp(argv[argi], L"-RF")==0
+        ) {
+            if (++argi >= argc) {
+                _putws(L"Usage: loader.exe [--debug|-D] [--error|-E] [--silent|-S] <command> [args...]");
+                return 1;
+            }
+            Config.regFilePath = argv[argi];
+        }
         else break;
         ++argi;
     }
