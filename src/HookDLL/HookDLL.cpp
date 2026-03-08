@@ -17,7 +17,7 @@ BOOL g_enableHook =  FALSE;
 wchar_t g_pipeName[128]={0};
 HANDLE g_hPipe = INVALID_HANDLE_VALUE;
 
-void WriteLog(const wchar_t* format, ...)
+static void WriteLog(const wchar_t* format, ...)
 {
     va_list args;
     va_start(args, format);

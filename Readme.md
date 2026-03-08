@@ -28,7 +28,7 @@ cmake --build build --parallel 8
 cmake -G
 ```
 
-查找自己有的编译器，吧`"MinGW Makefiles"`替换为对应的编译器
+查找自己有的编译器，将`"MinGW Makefiles"`替换为对应的编译器
 
 编译完成后在代码目录的`bin`文件夹下会生成`HookDLL.dll`和`Loader.exe`
 
@@ -39,10 +39,10 @@ cmake -G
 或者如果需要带参运行，打开命令行然后输入
 
 ``` cmd
-Loader.exe <命令/程序exe> <参数>
+Loader.exe [Loader参数] <命令/程序exe> <参数>
 ```
 
-程序结束后，虚拟注册表会保存到 `reg.dat`文件中（后面会支持更改）
+程序结束后，虚拟注册表会保存到 `reg.dat` 文件中（后面会支持更改）
 
 即可
 
