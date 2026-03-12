@@ -41,7 +41,7 @@ DWORD WINAPI ClientThread(LPVOID lpParam) {
         // 读取请求
         if (!ReadFileSafe(hPipe, &req, sizeof(req))) {
             if (GetLastError() != ERROR_BROKEN_PIPE) {
-                WriteLog(LOADER_LOG_ERROR , L"[Loader] Client %u Read Pipe error: %d\n", pid, GetLastError());
+                WriteLog(LOADER_LOG_ERROR , L"[Loader] Client %u Read Pipe error: %s\n", pid, LASTERRMSG);
             }
             break;
         }
@@ -138,7 +138,7 @@ DWORD WINAPI ClientThread(LPVOID lpParam) {
         }
         if(!WriteFileSafe(hPipe, &res, sizeof(RegResponse)))
         {
-            WriteLog(LOADER_LOG_ERROR, L"[Loader] Client %u Write Pipe error: %d\n", pid, GetLastError());
+            WriteLog(LOADER_LOG_ERROR, L"[Loader] Client %u Write Pipe error: %s\n", pid, LASTERRMSG);
             break;
         }
 
@@ -161,14 +161,14 @@ DWORD WINAPI PipeServerThread(LPVOID lpParam) {
             NULL
         );
         if (hPipe == INVALID_HANDLE_VALUE) {
-            WriteLog(LOADER_LOG_ERROR, L"[PipeServer] CreateNamedPipeW failed: %d\n", GetLastError());
+            WriteLog(LOADER_LOG_ERROR, L"[PipeServer] CreateNamedPipeW failed: %s\n", LASTERRMSG);
             CloseHandle(hPipe);
             continue;
         }
 
         if(!ConnectNamedPipe(hPipe, NULL) && GetLastError()!=ERROR_PIPE_CONNECTED)
         {
-            WriteLog(LOADER_LOG_ERROR, L"[PipeServer] Named pipe connect failed: %d\n", GetLastError());
+            WriteLog(LOADER_LOG_ERROR, L"[PipeServer] Named pipe connect failed: %s\n", LASTERRMSG);
             break;
         }
 
@@ -180,7 +180,7 @@ DWORD WINAPI PipeServerThread(LPVOID lpParam) {
         if (hThread) {
             CloseHandle(hThread);    // 不等待线程，独立运行
         } else {
-            WriteLog(LOADER_LOG_ERROR, L"[PipeServer] CreateThread failed: %d\n", GetLastError());
+            WriteLog(LOADER_LOG_ERROR, L"[PipeServer] CreateThread failed: %s\n", LASTERRMSG);
             CloseHandle(hPipe);
         }
     }
@@ -190,15 +190,35 @@ DWORD WINAPI PipeServerThread(LPVOID lpParam) {
 // 注入 DLL 到目标进程
 BOOL InjectDll(HANDLE hProcess, const wchar_t* dllPath) {
     // 注入dll
-   const wchar_t* ret = _RemoteCall(hProcess, L"kernel32.dll", "LoadLibraryW", dllPath);
-   if(ret != _CALL_SUCCESS){
-        WriteLog(LOADER_LOG_ERROR, ret, GetLastError());
+   DWORD exitCode;
+   const wchar_t* ret = _RemoteCall(hProcess, L"kernel32.dll", "LoadLibraryW", dllPath, &exitCode);
+   if(ret != _CALL_SUCCESS) {
+        WriteLog(LOADER_LOG_ERROR, ret, LASTERRMSG);
         return FALSE;
    }
+   if (exitCode==0) {
+        PTHREAD_START_ROUTINE pLoadLibrary = (PTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetLastError");
+        if (!pLoadLibrary) {
+            WriteLog(LOADER_LOG_ALL, L"GetLastError Failed: %s\n", LASTERRMSG);
+            return FALSE;
+        }
+        HANDLE hRemoteThread = CreateRemoteThread(hProcess, NULL, 0, pLoadLibrary, NULL, 0, NULL);
+        if (!hRemoteThread) {
+            WriteLog(LOADER_LOG_ALL, L"CreateRemoteThread Failed: %s\n", LASTERRMSG);
+            return FALSE;
+        }
+        WaitForSingleObject(hRemoteThread, INFINITE);
+        if (!GetExitCodeThread(hRemoteThread, &exitCode)) {
+            WriteLog(LOADER_LOG_ERROR, L"GetExitCodeThread Failed: %s\n", LASTERRMSG);
+            return FALSE;
+        }
+        WriteLog(LOADER_LOG_ERROR, L"LoadLibraryW Failed: %s\n", GetErrorMessage(exitCode).c_str());
+        return FALSE;
+   }
+   WriteLog(LOADER_LOG_ALL, L"[Loader] SetPipeName on subprocess\n");
    ret = _RemoteCall(hProcess, L"HookDLL.dll", "SetPipeName", g_pipeName);
-   WriteLog(LOADER_LOG_ALL, L"[Loader] SetPipeName on subprocess");
    if(ret != _CALL_SUCCESS){
-        WriteLog(LOADER_LOG_ERROR, ret, GetLastError());
+        WriteLog(LOADER_LOG_ERROR, ret, LASTERRMSG);
         return FALSE;
    }
     return TRUE;
@@ -243,7 +263,7 @@ int wmain(int argc, wchar_t* argv[]) {
     // 启动命名管道服务端
     CreateThread(NULL, 0, PipeServerThread, NULL, 0, NULL);
     if(!virReg.LoadBinary(Config.regFilePath)){
-        WriteLog(LOADER_LOG_ALL, L"[Loader] RegFile load failed %d\n", GetLastError());
+        WriteLog(LOADER_LOG_ALL, L"[Loader] RegFile load failed: %s\n", LASTERRMSG);
     }
 
     // 构建命令行
@@ -258,22 +278,22 @@ int wmain(int argc, wchar_t* argv[]) {
     }
     cmdLine = cmdLineBuilder.str();
 
-    WriteLog(LOADER_LOG_ALL, L"[Loader] CmdLine: [%ls]\n", cmdLine.c_str());
+    WriteLog(LOADER_LOG_ALL, L"[Loader] CmdLine: [%s]\n", cmdLine.c_str());
     // 创建子进程（挂起）
     STARTUPINFOW si = { sizeof(si) };
     PROCESS_INFORMATION pi;
     if (!CreateProcessW(NULL,
-            (LPWSTR)cmdLine.c_str(),
-            NULL,
-            NULL,
-            FALSE,
-            CREATE_SUSPENDED,
-            NULL,
-            NULL,
-            &si,
-            &pi))
+        (LPWSTR)cmdLine.c_str(),
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_SUSPENDED,
+        NULL,
+        NULL,
+        &si,
+        &pi))
     {
-        WriteLog(LOADER_LOG_ERROR, L"[Loader] CreateProcess failed: %d\n", GetLastError());
+        WriteLog(LOADER_LOG_ERROR, L"[Loader] CreateProcess failed: %s\n", LASTERRMSG);
         return 1;
     }
 
@@ -310,7 +330,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
 
     if (!virReg.SaveBinary(Config.regFilePath))
-        WriteLog(LOADER_LOG_ERROR, L"[Loader] RegFile save failed: %d\n", GetLastError());
+        WriteLog(LOADER_LOG_ERROR, L"[Loader] RegFile save failed: %s\n", LASTERRMSG);
     if (Config.logLevel==LOADER_LOG_ALL) {
         WriteLog(LOADER_LOG_ALL, L"REG:\n%s", virReg.ToString().c_str());
         _putws(L"Input anything ...");

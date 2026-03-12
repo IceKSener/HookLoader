@@ -5,29 +5,9 @@
 
 #include "HookDLL/RegAPI.hpp"
 #include "RegForm.hpp"
+#include "Common.hpp"
 
 using namespace std;
-
-// 辅助函数：将 ANSI 字符串转换为宽字符串
-static wstring AnsiToWide(LPCSTR ansiStr) {
-    if (!ansiStr) return wstring();
-    int len = MultiByteToWideChar(CP_ACP, 0, ansiStr, -1, nullptr, 0);
-    wstring wstr(len, L'\0');
-    MultiByteToWideChar(CP_ACP, 0, ansiStr, -1, &wstr[0], len);
-    wstr.pop_back(); // 移除末尾多余的 null
-    return wstr;
-}
-
-// 辅助函数：将宽字符串转换为 ANSI
-static string WideToAnsi(LPCWSTR wideStr) {
-    if (!wideStr) return string();
-    int len = WideCharToMultiByte(CP_ACP, 0, wideStr, -1, nullptr, 0, nullptr, nullptr);
-    string str(len, '\0');
-    WideCharToMultiByte(CP_ACP, 0, wideStr, -1, &str[0], len, nullptr, nullptr);
-    str.pop_back();
-    return str;
-}
-
 
 // ================== Ex 系列 ANSI API 钩子 ==================
 

@@ -38,7 +38,7 @@ BOOL SendRequestAndReceive(const RegRequest& req, RegResponse& res)
     DWORD cbWritten, cbRead;
     BOOL success = WriteFile(g_hPipe, &req, sizeof(RegRequest), &cbWritten, NULL);
     if (!success || cbWritten != sizeof(RegRequest)) {
-        WriteLog(L"[HookDLL] WriteFile to pipe failed, error=%d\n", GetLastError());
+        WriteLog(L"[HookDLL] WriteFile to pipe failed: %s\n", LASTERRMSG);
         CloseHandle(g_hPipe);
         g_hPipe = INVALID_HANDLE_VALUE;
         LeaveCriticalSection(&g_cs);
@@ -47,7 +47,7 @@ BOOL SendRequestAndReceive(const RegRequest& req, RegResponse& res)
 
     success = ReadFile(g_hPipe, &res, sizeof(RegResponse), &cbRead, NULL);
     if (!success || cbRead != sizeof(RegResponse)) {
-        WriteLog(L"[HookDLL] ReadFile from pipe failed, error=%d\n", GetLastError());
+        WriteLog(L"[HookDLL] ReadFile from pipe failed: %s\n", LASTERRMSG);
         CloseHandle(g_hPipe);
         g_hPipe = INVALID_HANDLE_VALUE;
         LeaveCriticalSection(&g_cs);
@@ -69,7 +69,7 @@ BOOL WINAPI HookCreateProcessW(LPCWSTR lpApp, LPWSTR lpCmd, LPSECURITY_ATTRIBUTE
     BOOL ret = RealCreateProcessW(lpApp, lpCmd, lpPA, lpTA, bInherit, flags, lpEnv, lpDir, lpSI, lpPI);
     if (!ret)
     {
-        WriteLog(L"[HookDLL]  CreateProcess failed, error=%d\n", GetLastError());
+        WriteLog(L"[HookDLL]  CreateProcess failed: %s\n", LASTERRMSG);
         return FALSE;
     }
     wchar_t dllPath[MAX_PATH];
@@ -89,7 +89,7 @@ BOOL WINAPI HookCreateProcessW(LPCWSTR lpApp, LPWSTR lpCmd, LPSECURITY_ATTRIBUTE
 extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
 {
     if (g_hPipe == INVALID_HANDLE_VALUE) {
-        wprintf(L"[HookDLL] HookDLL is loaded into process %d\n", GetCurrentProcessId());
+        WriteLog(L"[HookDLL] Initializing HookDLL in process %d\n", GetCurrentProcessId());
         EnterCriticalSection(&g_cs);
         wcscpy_s(g_pipeName, pipeName);
         g_hPipe = CreateFileW(
@@ -102,7 +102,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
             , NULL
         );
         if (g_hPipe == INVALID_HANDLE_VALUE) {
-            WriteLog(L"[HookDLL] Failed to connect to pipe %s, error=%d\n", g_pipeName, GetLastError());
+            WriteLog(L"[HookDLL] Failed to connect to pipe %s: %s\n", g_pipeName, LASTERRMSG);
             LeaveCriticalSection(&g_cs);
             return 0 ;
         }
@@ -163,9 +163,10 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
             return FALSE;
         }
 
+        WriteLog(L"[HookDLL] HookDLL initialized successfully in process %d\n", GetCurrentProcessId());
         LeaveCriticalSection(&g_cs);
     }
-    return 0;
+    return TRUE;
 }
 
 // DLL 入口点
@@ -179,7 +180,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         // 初始化 MinHook
         if (MH_Initialize() != MH_OK)
         {
-            wprintf(L"[HookDLL] MH_Initialize failed\n");
+            WriteLog(L"[HookDLL] MH_Initialize failed\n");
             return FALSE;
         }
         break;
