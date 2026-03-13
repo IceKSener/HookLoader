@@ -11,6 +11,8 @@ file(GLOB_RECURSE HOOKDLL_CPP src/HookDLL/*.cpp)
 file(GLOB_RECURSE LOADER_CPP src/Loader/*.cpp)
 file(GLOB_RECURSE COMMON_CPP src/Common.cpp)
 
+add_subdirectory(libraries/minhook)
+
 # ------------------- 定义库（DLL） -------------------
 add_library(HookDLL SHARED ${HOOKDLL_CPP} ${COMMON_CPP})
 

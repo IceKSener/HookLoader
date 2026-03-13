@@ -6,13 +6,11 @@
 
 ## 编译步骤
 
-本项目使用了minhook库（ https://github.com/TsudaKageyu/minhook )，首先需要安装minhook库或者修改代码进行静态编译
-
-（使用MSYS2可直接使用pacman命令安装，具体版本查看 https://packages.msys2.org/base/mingw-w64-MinHook ）
+本项目使用了minhook库（ https://github.com/TsudaKageyu/minhook )，需要补全minhook子仓库代码进行编译
 
 安装CMake
 
-使用git clone或直接下载代码，打开代码目录下的命令行
+使用git clone --recursive下载代码，打开代码目录下的命令行
 
 输入
 
