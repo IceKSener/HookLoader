@@ -266,6 +266,13 @@ int wmain(int argc, wchar_t* argv[]) {
         WriteLog(LOADER_LOG_ALL, L"[Loader] RegFile load failed: %s\n", LASTERRMSG);
     }
 
+    // 创建作业
+    HANDLE hJob = CreateJobObjectW(NULL, NULL);
+    if (!hJob) {
+        WriteLog(LOADER_LOG_ERROR, L"[Loader] CreateJobObjectW failed: %s\n", LASTERRMSG);
+        return 1;
+    }
+    
     // 构建命令行
     wstringstream cmdLineBuilder;
     wstring cmdLine;
@@ -299,6 +306,15 @@ int wmain(int argc, wchar_t* argv[]) {
 
     WriteLog(LOADER_LOG_INFO, L"[Loader] Process created (PID: %d). Injecting DLL...\n", pi.dwProcessId);
 
+    if (!AssignProcessToJobObject(hJob, pi.hProcess)) {
+        WriteLog(LOADER_LOG_ERROR, L"[Loader] AssignProcessToJobObject failed: %s\n", LASTERRMSG);
+        TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        CloseHandle(hJob);
+        return 1;
+    }
+
     // 获取当前目录下的 HookDLL.dll 路径
     wchar_t dllPath[MAX_PATH];
     
@@ -328,6 +344,22 @@ int wmain(int argc, wchar_t* argv[]) {
     GetExitCodeProcess(pi.hProcess, &exitCode);
     WriteLog(LOADER_LOG_INFO, L"[Loader] Process exited with code %d\n", exitCode);
 
+    // 等待所有子进程结束
+    {
+        DWORD subprocessNum = 0;
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION jobInfo;
+        do {
+            QueryInformationJobObject(hJob, JobObjectBasicAccountingInformation, 
+                &jobInfo, sizeof(jobInfo), NULL);
+            if (jobInfo.ActiveProcesses != subprocessNum) {
+                subprocessNum = jobInfo.ActiveProcesses;
+                WriteLog(LOADER_LOG_INFO, L"[Loader] Wait %d subprocess to end.\n", subprocessNum);
+            }
+            if (subprocessNum == 0) break;
+            Sleep(500); // 避免CPU占用过高
+        } while (true);
+    }
+    WriteLog(LOADER_LOG_INFO, L"[Loader] subrocesses end\n");
 
     if (!virReg.SaveBinary(Config.regFilePath))
         WriteLog(LOADER_LOG_ERROR, L"[Loader] RegFile save failed: %s\n", LASTERRMSG);
@@ -340,6 +372,7 @@ int wmain(int argc, wchar_t* argv[]) {
     // 清理资源
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    CloseHandle(hJob);
     DeleteCriticalSection(&g_LogCs);
     return 0;
 }
