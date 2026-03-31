@@ -10,6 +10,7 @@
 using namespace std;
 
 auto RealCreateProcessW = CreateProcessW;
+auto RealCreateProcessA = CreateProcessA;
 
 CRITICAL_SECTION g_cs;
 
@@ -60,13 +61,39 @@ BOOL SendRequestAndReceive(const RegRequest& req, RegResponse& res)
 
 // 钩子函数定义
 
-// CreateProcessW（非注册表操作，但原代码已有）
+// CreateProcessW
 BOOL WINAPI HookCreateProcessW(LPCWSTR lpApp, LPWSTR lpCmd, LPSECURITY_ATTRIBUTES lpPA, LPSECURITY_ATTRIBUTES lpTA,
                                BOOL bInherit, DWORD dwFlags, LPVOID lpEnv, LPCWSTR lpDir, LPSTARTUPINFOW lpSI, LPPROCESS_INFORMATION lpPI)
 {
     WriteLog(L"[HookDLL] CreateProcessW CmdLine=%s\n", lpCmd ? lpCmd : L"(null)");
     DWORD flags = dwFlags | CREATE_SUSPENDED;
     BOOL ret = RealCreateProcessW(lpApp, lpCmd, lpPA, lpTA, bInherit, flags, lpEnv, lpDir, lpSI, lpPI);
+    if (!ret)
+    {
+        WriteLog(L"[HookDLL]  CreateProcess failed: %s\n", LASTERRMSG);
+        return FALSE;
+    }
+    wchar_t dllPath[MAX_PATH];
+    GetModuleFileNameW(GetModuleHandleW(L"HookDLL.dll"), dllPath, MAX_PATH);
+
+    // 注入dll
+   if(_RemoteCall(lpPI->hProcess, L"kernel32.dll", "LoadLibraryW", dllPath)==_CALL_SUCCESS){
+        // 设置管道名
+        _RemoteCall(lpPI->hProcess, L"HookDLL.dll", "SetPipeName", g_pipeName);
+   }
+   
+    ResumeThread(lpPI->hThread);
+    WriteLog(L"[HookDLL] Child process resumed.\n");
+    return ret;
+}
+
+// CreateProcessA
+BOOL WINAPI HookCreateProcessA(LPCSTR lpApp, LPSTR lpCmd, LPSECURITY_ATTRIBUTES lpPA, LPSECURITY_ATTRIBUTES lpTA,
+                               BOOL bInherit, DWORD dwFlags, LPVOID lpEnv, LPCSTR lpDir, LPSTARTUPINFOA lpSI, LPPROCESS_INFORMATION lpPI)
+{
+    WriteLog(L"[HookDLL] CreateProcessA CmdLine=%s\n", lpCmd ? AnsiToWide(lpCmd).c_str() : L"(null)");
+    DWORD flags = dwFlags | CREATE_SUSPENDED;
+    BOOL ret = RealCreateProcessA(lpApp, lpCmd, lpPA, lpTA, bInherit, flags, lpEnv, lpDir, lpSI, lpPI);
     if (!ret)
     {
         WriteLog(L"[HookDLL]  CreateProcess failed: %s\n", LASTERRMSG);
@@ -148,7 +175,8 @@ extern "C" __declspec(dllexport) DWORD WINAPI SetPipeName(LPCWSTR pipeName)
             ERR_HOOK(RegEnumValueA) ||
             ERR_HOOK(RegQueryInfoKeyA) ||
 
-            ERR_HOOK(CreateProcessW)
+            ERR_HOOK(CreateProcessW) ||
+            ERR_HOOK(CreateProcessA)
         )
         {
             wprintf(L"[HookDLL] MH_CreateHook failed\n");
