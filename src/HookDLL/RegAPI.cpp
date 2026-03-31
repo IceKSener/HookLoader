@@ -2,10 +2,7 @@
 
 #include "HookDLL/HookDLL.hpp"
 
-template <typename T>
-const T& min(const T& a, const T&b){
-    return b < a ? b : a;
-}
+#define min(a,b) (((a) < (b)) ? (a) : (b))
 
 // RegCreateKeyExW
 LONG WINAPI HookRegCreateKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, LPWSTR lpClass, DWORD dwOptions, REGSAM samDesired, LPSECURITY_ATTRIBUTES lpSecurityAttributes, PHKEY phkResult, LPDWORD lpdwDisposition)
